@@ -1,0 +1,18 @@
+{
+  "title": "APIR Latency",
+  "uid": "apir-latency",
+  "schemaVersion": 38,
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "p50 / p95 / p99",
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 0},
+      "targets": [
+        {"expr": "histogram_quantile(0.5, sum by (le, service) (rate(request_latency_seconds_bucket[1m])))", "legendFormat": "p50 {{service}}", "refId": "A"},
+        {"expr": "histogram_quantile(0.95, sum by (le, service) (rate(request_latency_seconds_bucket[1m])))", "legendFormat": "p95 {{service}}", "refId": "B"},
+        {"expr": "histogram_quantile(0.99, sum by (le, service) (rate(request_latency_seconds_bucket[1m])))", "legendFormat": "p99 {{service}}", "refId": "C"}
+      ]
+    }
+  ]
+}

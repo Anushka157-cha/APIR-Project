@@ -1,0 +1,21 @@
+{
+  "title": "APIR Service Health",
+  "uid": "apir-health",
+  "schemaVersion": 38,
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "service_health",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 0},
+      "targets": [{"expr": "service_health", "legendFormat": "{{service}}", "refId": "A"}]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "active_requests",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8},
+      "targets": [{"expr": "active_requests", "legendFormat": "{{service}}", "refId": "A"}]
+    }
+  ]
+}

@@ -1,0 +1,193 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: apir
+      POSTGRES_PASSWORD: apir
+      POSTGRES_DB: apir
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./infrastructure/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U apir"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.153.0
+    command: ["--config=/etc/otel-collector.yml"]
+    volumes:
+      - ./infrastructure/otel/otel-collector.yml:/etc/otel-collector.yml:ro
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=6h
+    volumes:
+      - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - gateway
+      - order
+      - payment
+      - inventory
+      - notification
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./infrastructure/grafana/provisioning:/etc/grafana/provisioning:ro
+
+  gateway:
+    build:
+      context: .
+      dockerfile: services/Dockerfile
+      args:
+        SERVICE_NAME: gateway
+        PORT: "8080"
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql://apir:apir@postgres:5432/apir
+      OTEL_ENDPOINT: http://otel-collector:4318
+      ORDER_URL: http://order:8081
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  order:
+    build:
+      context: .
+      dockerfile: services/Dockerfile
+      args:
+        SERVICE_NAME: order
+        PORT: "8081"
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql://apir:apir@postgres:5432/apir
+      OTEL_ENDPOINT: http://otel-collector:4318
+      INVENTORY_URL: http://inventory:8083
+      PAYMENT_URL: http://payment:8082
+      NOTIFICATION_URL: http://notification:8084
+    ports:
+      - "8081:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  payment:
+    build:
+      context: .
+      dockerfile: services/Dockerfile
+      args:
+        SERVICE_NAME: payment
+        PORT: "8082"
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql://apir:apir@postgres:5432/apir
+      OTEL_ENDPOINT: http://otel-collector:4318
+    ports:
+      - "8082:8082"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  inventory:
+    build:
+      context: .
+      dockerfile: services/Dockerfile
+      args:
+        SERVICE_NAME: inventory
+        PORT: "8083"
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql://apir:apir@postgres:5432/apir
+      OTEL_ENDPOINT: http://otel-collector:4318
+    ports:
+      - "8083:8083"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  notification:
+    build:
+      context: .
+      dockerfile: services/Dockerfile
+      args:
+        SERVICE_NAME: notification
+        PORT: "8084"
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql://apir:apir@postgres:5432/apir
+      OTEL_ENDPOINT: http://otel-collector:4318
+    ports:
+      - "8084:8084"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://apir:apir@postgres:5432/apir
+      REDIS_URL: redis://redis:6379/0
+      PROMETHEUS_URL: http://prometheus:9090
+      OTEL_ENDPOINT: http://otel-collector:4318
+      KNOWLEDGE_DIR: /knowledge
+    ports:
+      - "8000:8000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend

@@ -1,0 +1,44 @@
+{
+  "title": "APIR System Overview",
+  "uid": "apir-overview",
+  "schemaVersion": 38,
+  "version": 1,
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Total requests/s",
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "sum(rate(request_count[1m]))", "refId": "A"}]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Errors/s",
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+      "targets": [{"expr": "sum(rate(error_count[1m]))", "refId": "A"}]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "p95 latency",
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+      "targets": [{"expr": "histogram_quantile(0.95, sum by (le) (rate(request_latency_seconds_bucket[1m])))", "refId": "A"}]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Healthy services",
+      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+      "targets": [{"expr": "sum(service_health)", "refId": "A"}]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Request rate by service",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 4},
+      "targets": [{"expr": "sum by (service) (rate(request_count[1m]))", "legendFormat": "{{service}}", "refId": "A"}]
+    }
+  ]
+}

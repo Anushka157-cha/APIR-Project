@@ -1,0 +1,25 @@
+{
+  "title": "APIR Errors",
+  "uid": "apir-errors",
+  "schemaVersion": 38,
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "4xx vs 5xx",
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 0},
+      "targets": [
+        {"expr": "sum by (status_class) (rate(error_count[1m]))", "legendFormat": "{{status_class}}", "refId": "A"}
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Error rate",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 10},
+      "targets": [
+        {"expr": "sum(rate(error_count[1m])) / clamp_min(sum(rate(request_count[1m])), 0.001)", "refId": "A"}
+      ]
+    }
+  ]
+}
