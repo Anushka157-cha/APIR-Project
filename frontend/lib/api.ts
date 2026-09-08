@@ -1,4 +1,8 @@
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window !== "undefined" && window.location.hostname.includes("railway.app")
+    ? "https://apir-project-production-0431.up.railway.app"
+    : "http://localhost:8000");
 
 export function token(): string | null {
   if (typeof window === "undefined") return null;
