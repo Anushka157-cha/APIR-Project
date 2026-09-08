@@ -170,3 +170,13 @@ async def health():
 
 
 app.include_router(router)
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Unhandled error on {request.url.path}: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc)},
+    )
+

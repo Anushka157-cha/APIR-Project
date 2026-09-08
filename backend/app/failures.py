@@ -121,26 +121,34 @@ SCENARIOS: dict[str, dict] = {
 }
 
 
+_IN_MEMORY_ACTIVE: dict[str, dict] = {}
+_IN_MEMORY_FLAGS: dict[str, dict] = {}
+
+
 async def _client() -> redis.Redis:
-    return redis.from_url(settings.redis_url, decode_responses=True)
+    return redis.from_url(settings.redis_url, decode_responses=True, socket_connect_timeout=1.5)
 
 
 async def start_scenario(name: str) -> dict:
     if name not in SCENARIOS:
         raise ValueError("unknown scenario")
     spec = SCENARIOS[name]
-    r = await _client()
-    await r.sadd("failure_active_set", name)
-    await r.hset(
-        f"failure_active:{name}",
-        mapping={"started_at": datetime.now(timezone.utc).isoformat(), "target": spec["target"]},
-    )
-    # Store each scenario independently; service flags are rebuilt so stopping
-    # one scenario cannot erase another scenario affecting the same service.
-    for svc, flags in spec["flags"].items():
-        await r.hset(f"failure_scenario:{name}:{svc}", mapping=flags)
-        await _rebuild_service_flags(r, svc)
-    await r.aclose()
+    now = datetime.now(timezone.utc).isoformat()
+    try:
+        r = await _client()
+        await r.sadd("failure_active_set", name)
+        await r.hset(
+            f"failure_active:{name}",
+            mapping={"started_at": now, "target": spec["target"]},
+        )
+        for svc, flags in spec["flags"].items():
+            await r.hset(f"failure_scenario:{name}:{svc}", mapping=flags)
+            await _rebuild_service_flags(r, svc)
+        await r.aclose()
+    except Exception:
+        _IN_MEMORY_ACTIVE[name] = {"scenario": name, "started_at": now, "target": spec["target"], **spec}
+        for svc, flags in spec["flags"].items():
+            _IN_MEMORY_FLAGS.setdefault(svc, {}).update(flags)
     return {"scenario": name, "status": "started", **spec}
 
 
@@ -148,47 +156,68 @@ async def stop_scenario(name: str) -> dict:
     if name not in SCENARIOS:
         raise ValueError("unknown scenario")
     spec = SCENARIOS[name]
-    r = await _client()
-    await r.srem("failure_active_set", name)
-    await r.delete(f"failure_active:{name}")
-    for svc in spec["flags"]:
-        await r.delete(f"failure_scenario:{name}:{svc}")
-        await _rebuild_service_flags(r, svc)
-    await r.aclose()
+    try:
+        r = await _client()
+        await r.srem("failure_active_set", name)
+        await r.delete(f"failure_active:{name}")
+        for svc in spec["flags"]:
+            await r.delete(f"failure_scenario:{name}:{svc}")
+            await _rebuild_service_flags(r, svc)
+        await r.aclose()
+    except Exception:
+        _IN_MEMORY_ACTIVE.pop(name, None)
+        for svc in spec["flags"]:
+            _IN_MEMORY_FLAGS.pop(svc, None)
     return {"scenario": name, "status": "stopped"}
 
 
 async def stop_all_for_target(target: str) -> None:
-    r = await _client()
-    active = await r.smembers("failure_active_set")
-    for name in active:
-        spec = SCENARIOS.get(name)
-        if spec and target in spec["flags"]:
-            await r.delete(f"failure_scenario:{name}:{target}")
-            await r.delete(f"failure_active:{name}")
-            await r.srem("failure_active_set", name)
-    await _rebuild_service_flags(r, target)
-    await r.aclose()
+    try:
+        r = await _client()
+        active = await r.smembers("failure_active_set")
+        for name in active:
+            spec = SCENARIOS.get(name)
+            if spec and target in spec["flags"]:
+                await r.delete(f"failure_scenario:{name}:{target}")
+                await r.delete(f"failure_active:{name}")
+                await r.srem("failure_active_set", name)
+        await _rebuild_service_flags(r, target)
+        await r.aclose()
+    except Exception:
+        to_remove = [
+            k
+            for k, v in _IN_MEMORY_ACTIVE.items()
+            if v.get("target") == target or target in SCENARIOS.get(k, {}).get("flags", {})
+        ]
+        for k in to_remove:
+            _IN_MEMORY_ACTIVE.pop(k, None)
+        _IN_MEMORY_FLAGS.pop(target, None)
 
 
 async def _rebuild_service_flags(r: redis.Redis, service: str) -> None:
     """Merge active scenario flags for a service into the legacy service key."""
-    merged: dict[str, str] = {}
-    for name in await r.smembers("failure_active_set"):
-        merged.update(await r.hgetall(f"failure_scenario:{name}:{service}"))
-    key = f"failure:{service}"
-    await r.delete(key)
-    if merged:
-        await r.hset(key, mapping=merged)
+    try:
+        merged: dict[str, str] = {}
+        for name in await r.smembers("failure_active_set"):
+            merged.update(await r.hgetall(f"failure_scenario:{name}:{service}"))
+        key = f"failure:{service}"
+        await r.delete(key)
+        if merged:
+            await r.hset(key, mapping=merged)
+    except Exception:
+        pass
 
 
 async def list_active() -> list[dict]:
-    r = await _client()
-    names = await r.smembers("failure_active_set")
-    out = []
-    for name in names:
-        meta = await r.hgetall(f"failure_active:{name}")
-        spec = SCENARIOS.get(name, {})
-        out.append({"scenario": name, **spec, **meta})
-    await r.aclose()
-    return out
+    try:
+        r = await _client()
+        names = await r.smembers("failure_active_set")
+        out = []
+        for name in names:
+            meta = await r.hgetall(f"failure_active:{name}")
+            spec = SCENARIOS.get(name, {})
+            out.append({"scenario": name, **spec, **meta})
+        await r.aclose()
+        return out
+    except Exception:
+        return list(_IN_MEMORY_ACTIVE.values())

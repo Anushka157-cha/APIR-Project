@@ -672,7 +672,10 @@ async def service_deps(service: str, user: dict = Depends(get_current_user)):
 
 @router.get("/failures")
 async def failures(user: dict = Depends(get_current_user)):
-    active = await list_active()
+    try:
+        active = await list_active()
+    except Exception:
+        active = []
     return {"scenarios": SCENARIOS, "active": active}
 
 

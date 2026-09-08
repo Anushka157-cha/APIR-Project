@@ -28,24 +28,27 @@ HYPOTHESIS_CATALOG = [
 
 
 async def collect_logs(r: redis.Redis, service: str | None = None) -> list[dict]:
-    keys = [f"logs:{service}"] if service else []
-    if not service:
-        keys = [
-            "logs:gateway",
-            "logs:order-service",
-            "logs:inventory-service",
-            "logs:payment-service",
-            "logs:notification-service",
-        ]
-    out = []
-    for key in keys:
-        raw = await r.lrange(key, 0, 200)
-        for item in raw:
-            try:
-                out.append(json.loads(item))
-            except json.JSONDecodeError:
-                continue
-    return out
+    try:
+        keys = [f"logs:{service}"] if service else []
+        if not service:
+            keys = [
+                "logs:gateway",
+                "logs:order-service",
+                "logs:inventory-service",
+                "logs:payment-service",
+                "logs:notification-service",
+            ]
+        out = []
+        for key in keys:
+            raw = await r.lrange(key, 0, 200)
+            for item in raw:
+                try:
+                    out.append(json.loads(item))
+                except json.JSONDecodeError:
+                    continue
+        return out
+    except Exception:
+        return []
 
 
 def analyze_logs(logs: list[dict]) -> list[dict]:
@@ -119,10 +122,14 @@ def analyze_metrics(snap: dict, service: str, history: dict[str, list[float]] | 
 
 async def investigate(session: AsyncSession, incident: dict) -> dict:
     llm = get_llm()
-    r = redis.from_url(settings.redis_url, decode_responses=True)
     prom = PrometheusClient()
     service = incident["service"]
-    logs = await collect_logs(r, None)
+    try:
+        r = redis.from_url(settings.redis_url, decode_responses=True, socket_connect_timeout=1.5)
+        logs = await collect_logs(r, None)
+        await r.aclose()
+    except Exception:
+        logs = []
     # Incident evidence is constrained to the recent buffer around detection.
     detected = incident.get("detected_at")
     if detected:
