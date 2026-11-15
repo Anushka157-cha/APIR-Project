@@ -1,7 +1,7 @@
 const API =
   process.env.NEXT_PUBLIC_API_URL ||
   (typeof window !== "undefined" && window.location.hostname.includes("railway.app")
-    ? "https://soothing-perception-production-db8b96dc.up.railway.app"
+    ? "https://soothing-perception-production-f9d1989d.up.railway.app"
     : "http://localhost:8000");
 
 export function token(): string | null {
