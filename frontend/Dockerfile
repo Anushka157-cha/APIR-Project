@@ -13,7 +13,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 ENV NEXT_TELEMETRY_DISABLED=1
-ARG NEXT_PUBLIC_API_URL=https://apir-project-production-0431.up.railway.app
+ARG NEXT_PUBLIC_API_URL=https://soothing-perception-production.up.railway.app
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
 RUN npm run build
@@ -27,9 +27,10 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV HOSTNAME="0.0.0.0"
 ENV PORT=3000
 
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/package.json ./
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/.next ./.next
 
 EXPOSE 3000
 
-CMD ["node", "server.js"]
+CMD ["npx", "next", "start", "-H", "0.0.0.0", "-p", "3000"]
